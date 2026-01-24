@@ -1,0 +1,166 @@
+{
+  "project_name": "College Predictor Platform",
+  "design_philosophy": {
+    "identity": "E1: The Anti-AI Designer",
+    "core_concept": "Academic Precision (Fintech x Education)",
+    "vibe": "Trustworthy, Futuristic, Data-Driven, Hopeful",
+    "archetype": "Swiss & High-Contrast (Authority) + Organic Accents (Growth)",
+    "principles": [
+      "Fusion over Imitation: Mix Fintech precision with Education warmth",
+      "Emotion First: Reduce anxiety through clarity and calm colors",
+      "Content is King: Data must be legible and hierarchical",
+      "Negative Space: Use whitespace to prevent cognitive overload",
+      "Contrast: High contrast for data readability"
+    ]
+  },
+  "typography": {
+    "font_family": {
+      "headings": "Outfit, sans-serif",
+      "body": "DM Sans, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "weights": {
+      "headings": "600 (SemiBold) or 700 (Bold)",
+      "body": "400 (Regular) or 500 (Medium)",
+      "data": "500 (Medium)"
+    },
+    "usage_rules": [
+      "Use 'Outfit' for all Headings (h1-h6).",
+      "Use 'DM Sans' for all body text, labels, and inputs.",
+      "Use 'JetBrains Mono' specifically for Ranks, Percentages, and Cutoff data.",
+      "Headings > 32px must use 'tracking-tight'.",
+      "Overlines/Labels must be Uppercase + tracking-widest + text-xs."
+    ],
+    "installation": "Import via Google Fonts in index.css: @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;500;700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;600;700&display=swap');"
+  },
+  "colors": {
+    "palette": {
+      "primary": {
+        "name": "Deep Indigo",
+        "hex": "#1e1b4b",
+        "tailwind": "bg-indigo-950 text-white"
+      },
+      "secondary": {
+        "name": "Vibrant Teal",
+        "hex": "#14b8a6",
+        "tailwind": "text-teal-500 bg-teal-500/10"
+      },
+      "accent": {
+        "name": "Signal Orange",
+        "hex": "#f97316",
+        "tailwind": "text-orange-500 bg-orange-500/10"
+      },
+      "neutral": {
+        "light": "#f8fafc",
+        "dark": "#020617"
+      },
+      "gradients": {
+        "hero": "bg-gradient-to-br from-indigo-950 via-slate-900 to-teal-900",
+        "card_hover": "hover:bg-gradient-to-br hover:from-white/5 hover:to-white/0"
+      }
+    },
+    "semantic_usage": {
+      "safe_band": "text-teal-500 bg-teal-500/10 border-teal-500/20",
+      "moderate_band": "text-yellow-500 bg-yellow-500/10 border-yellow-500/20",
+      "risky_band": "text-orange-500 bg-orange-500/10 border-orange-500/20",
+      "background_light": "bg-slate-50",
+      "background_dark": "bg-slate-950",
+      "surface_light": "bg-white",
+      "surface_dark": "bg-slate-900"
+    }
+  },
+  "layout_strategy": {
+    "spacing": {
+      "base": "Use 2-3x more spacing than typical. Minimum p-6 for cards.",
+      "container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+      "section_gap": "gap-12 or gap-16"
+    },
+    "grids": {
+      "landing": "Bento Grid (Mode A): Mix of col-span-full, col-span-4, and col-span-2 cards.",
+      "dashboard": "Control Room Grid (Mode B): Sidebar (fixed) + Main Content (fluid grid).",
+      "results": "List View with Sticky Header. Use 'grid-cols-[2fr_1fr_1fr_1fr]' for table rows."
+    },
+    "surfaces": {
+      "cards": "Flat background, 1px subtle border (border-slate-200 dark:border-slate-800), no shadow by default. Hover: Shadow-lg + Scale 1.01.",
+      "glass": "backdrop-blur-xl bg-white/70 dark:bg-slate-950/70 border-b border-white/20",
+      "tracing_beam": "Use for the 'Active Predictor' card. Animated gradient border."
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "rounded-full px-8 py-6 text-base font-medium shadow-lg hover:shadow-xl transition-all active:scale-95",
+      "secondary": "rounded-full px-8 py-6 bg-transparent border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800"
+    },
+    "inputs": {
+      "style": "h-12 rounded-lg bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus:ring-2 focus:ring-indigo-500 transition-all",
+      "labels": "text-sm font-medium text-slate-500 dark:text-slate-400 mb-2 block"
+    },
+    "cards": {
+      "predictor_card": "p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-500/50 transition-colors group relative overflow-hidden",
+      "result_card": "p-6 rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+    },
+    "charts": {
+      "library": "Recharts (via Shadcn)",
+      "style": "Minimalist. Remove grid lines. Use gradients for areas. Tooltips must be custom styled (glassmorphism)."
+    }
+  },
+  "visual_enhancers": {
+    "textures": "Add a subtle noise texture overlay (opacity 0.03) to the entire app to reduce digital flatness.",
+    "gradients": "Use 'Northern Lights' (Indigo to Teal) for hero sections, but keep it subtle (opacity 0.8).",
+    "icons": "Lucide React. Use stroke-width={1.5} for a refined look.",
+    "motion": {
+      "library": "Framer Motion",
+      "entrance": "Stagger children by 0.1s. Fade up + Scale 0.95 -> 1.0.",
+      "hover": "Spring physics (stiffness: 400, damping: 17)."
+    }
+  },
+  "image_urls": {
+    "hero_background": {
+      "url": "https://images.unsplash.com/photo-1685456891912-c09f9cd252eb?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "description": "Modern university architecture with glass and clock, implies timelessness and future.",
+      "usage": "Hero section background with heavy overlay (bg-slate-950/90)."
+    },
+    "success_section": {
+      "url": "https://images.unsplash.com/photo-1758270703639-5f6f600baffa?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "description": "Happy graduates taking selfie, implies success and relief.",
+      "usage": "Testimonials or 'Success Stories' section."
+    },
+    "tech_background": {
+      "url": "https://images.unsplash.com/photo-1762279388952-85187155e48d?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "description": "Abstract neon lines, implies data flow and prediction algorithms.",
+      "usage": "Background for the 'How it Works' or 'Algorithm' section."
+    },
+    "placeholders": {
+      "college_logo": "https://ui-avatars.com/api/?name=College&background=random",
+      "user_avatar": "https://ui-avatars.com/api/?name=User&background=0D8ABC&color=fff"
+    }
+  },
+  "instructions_to_main_agent": {
+    "setup": [
+      "Install dependencies: framer-motion, lucide-react, clsx, tailwind-merge, recharts, sonner, vaul (for drawers).",
+      "Configure Tailwind colors to match the 'Deep Indigo' palette.",
+      "Add the font imports to index.css immediately."
+    ],
+    "implementation_order": [
+      "1. Setup Layouts (MainLayout, AdminLayout) with Sidebar/Navbar.",
+      "2. Build UI Primitives (Button, Input, Card, Badge) with E1 styles.",
+      "3. Create Landing Page (Hero, Predictor Grid, Features).",
+      "4. Build Predictor Form (Multi-step wizard).",
+      "5. Build Results Page (Data Grid, Filters, Charts).",
+      "6. Build Admin Dashboard (CSV Upload, Analytics)."
+    ],
+    "critical_rules": [
+      "DO NOT use default Shadcn styles. Override radius to 0.75rem (rounded-xl) or 1rem (rounded-2xl).",
+      "DO NOT use 'Inter' for headings. Use 'Outfit'.",
+      "Ensure Dark Mode is manually toggleable and persists.",
+      "All interactive elements MUST have data-testid attributes."
+    ]
+  },
+  "universal_guidelines": {
+    "anti_slop": "Avoid generic centered layouts. Use asymmetry. Use 2x more padding than you think is necessary.",
+    "dark_mode": "Dark mode should not be pitch black (#000). Use #020617 (Slate 950) for background and #0f172a (Slate 900) for cards.",
+    "glassmorphism": "Use backdrop-blur-xl with a white/5 border for a premium feel. Do not use simple opacity.",
+    "micro_interactions": "Buttons should scale down slightly on click. Cards should lift on hover. Inputs should have a colored ring on focus.",
+    "accessibility": "Ensure text contrast is > 4.5:1. Use 'text-slate-500' only on 'bg-slate-50' or lighter. On dark backgrounds, use 'text-slate-400'."
+  }
+}
