@@ -20,6 +20,7 @@ The CSV must contain **10 columns** in the exact order listed below.
 
 | # | Column Name | Data Type | Description | Example |
 |---|-------------|-----------|-------------|---------|
+| 0 | **college_type** | String | Type of college | IIT, NIT, GFTI, JEEA |
 | 1 | **college_name** | String | Full name of the institute | Indian Institute of Technology Bhubaneswar |
 | 2 | **branch_code** | String | Short branch code | CSE, ECE, ME, CE |
 | 3 | **branch_name** | String | Full academic program name | Civil Engineering (4 Years, B.Tech) |
@@ -36,7 +37,7 @@ The CSV must contain **10 columns** in the exact order listed below.
 ## 3. Sample CSV Data
 
 ```csv
-college_name,branch_code,branch_name,year,round,category,quota,gender_type,opening_rank,closing_rank
+college_type,college_name,branch_code,branch_name,year,round,category,quota,gender_type,opening_rank,closing_rank
 Indian Institute of Technology Bhubaneswar,CE,Civil Engineering (4 Years, Bachelor of Technology),2025,1,EWS,AI,Gender-Neutral,1912,2069
 Indian Institute of Technology Bhubaneswar,CE,Civil Engineering (4 Years, Bachelor of Technology),2025,1,EWS,AI,Female-only,3450,3646
 Indian Institute of Technology Bhubaneswar,CSE,Computer Science and Engineering (4 Years, Bachelor of Technology),2025,1,OPEN,AI,Gender-Neutral,2344,3785

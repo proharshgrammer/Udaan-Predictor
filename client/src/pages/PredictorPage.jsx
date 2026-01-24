@@ -20,16 +20,52 @@ const PredictorPage = () => {
     category: 'OPEN',
     quota: 'AI',
     gender: 'Gender-Neutral',
-    counselling_type: counselingType
+    counselling_type: counselingType,
+    exam_type: 'JEE Main' // Default
   });
   const [results, setResults] = useState([]);
 
   useEffect(() => {
-    setFormData(prev => ({ ...prev, counselling_type: counselingType }));
+    setFormData(prev => ({ 
+      ...prev, 
+      counselling_type: counselingType,
+      // Default to JEE Advanced if JoSAA (Actually JoSAA can be both, but user wants toggle. Let's default Main)
+      exam_type: counselingType === 'JoSAA' ? 'JEE Advanced' : 'JEE Main' 
+    }));
   }, [counselingType]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+  
+  // Toggle Helper
+  const setExamType = (type) => {
+    setFormData(prev => ({ ...prev, exam_type: type }));
+  };
+
+  const [sortBy, setSortBy] = useState('chance'); // chance, cutoff_low, cutoff_high
+
+  const handleSortChange = (e) => {
+    setSortBy(e.target.value);
+  };
+  
+  // ... (getSortedResults remains same) 
+
+  const getSortedResults = () => {
+    const sorted = [...results];
+    switch (sortBy) {
+      case 'chance':
+        // High Probability First
+        return sorted.sort((a, b) => b.prediction.probability - a.prediction.probability);
+      case 'cutoff_low':
+        // Lower Cutoff First (Harder/Better colleges)
+        return sorted.sort((a, b) => a.prediction.expected_cutoff - b.prediction.expected_cutoff);
+      case 'cutoff_high':
+        // Higher Cutoff First (Easier colleges)
+        return sorted.sort((a, b) => b.prediction.expected_cutoff - a.prediction.expected_cutoff);
+      default:
+        return sorted;
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -47,9 +83,10 @@ const PredictorPage = () => {
   };
 
   const exportCSV = () => {
-    const headers = ['College', 'Branch', 'Category', 'Quota', 'Your Rank', 'Expected Cutoff', 'Probability', 'Chance'];
+    const headers = ['College', 'Type', 'Branch', 'Category', 'Quota', 'Your Rank', 'Expected Cutoff', 'Probability', 'Chance'];
     const rows = results.map(r => [
       r.college,
+      r.college_type || 'N/A', // Add College Type
       r.branch,
       formData.category,
       formData.quota,
@@ -95,6 +132,37 @@ const PredictorPage = () => {
             </div>
             <p className="text-center text-slate-500 mb-6 -mt-4">Enter your details to find your best college options</p>
             <form onSubmit={handleSubmit} className="space-y-6">
+              
+              {/* Exam Type Toggle (Only for JoSAA) */}
+              {counselingType === 'JoSAA' && (
+                <div className="bg-slate-100 p-1 rounded-xl flex">
+                  <button
+                    type="button"
+                    onClick={() => setExamType('JEE Main')}
+                    className={cn(
+                      "flex-1 py-2 text-sm font-medium rounded-lg transition-all",
+                      formData.exam_type === 'JEE Main' 
+                        ? 'bg-white text-indigo-600 shadow-sm' 
+                        : 'text-slate-500 hover:text-slate-700'
+                    )}
+                  >
+                    JEE Main
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExamType('JEE Advanced')}
+                    className={cn(
+                      "flex-1 py-2 text-sm font-medium rounded-lg transition-all",
+                      formData.exam_type === 'JEE Advanced' 
+                        ? 'bg-white text-indigo-600 shadow-sm' 
+                        : 'text-slate-500 hover:text-slate-700'
+                    )}
+                  >
+                    JEE Advanced
+                  </button>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium mb-2 text-slate-700 dark:text-slate-300">Entrance Rank</label>
                 <Input 
@@ -120,7 +188,7 @@ const PredictorPage = () => {
                     <option value="OBC-NCL">OBC-NCL</option>
                     <option value="SC">SC</option>
                     <option value="ST">ST</option>
-                    <option value="EWS">EWS</option>
+                    <option value="GEN-EWS">EWS</option>
                   </select>
                 </div>
                 <div>
@@ -164,12 +232,27 @@ const PredictorPage = () => {
           <div className="flex flex-col md:flex-row justify-between items-center mb-8">
             <div>
               <h1 className="text-3xl font-heading font-bold">Prediction Results</h1>
-              <p className="text-slate-500">Based on Rank {formData.rank} ({formData.category})</p>
+              <p className="text-slate-500">
+                Based on Rank {formData.rank} ({formData.category}) 
+                {formData.exam_type && ` - ${formData.exam_type}`}
+              </p>
             </div>
-            <div className="flex space-x-4 mt-4 md:mt-0">
-               <Button variant="outline" onClick={() => setStep(1)}>Modify Search</Button>
-               <Button onClick={exportCSV} variant="secondary">
-                 <Download className="mr-2 h-4 w-4" /> Export CSV
+            <div className="flex space-x-4 mt-4 md:mt-0 items-center">
+               <div className="flex items-center space-x-2">
+                 <span className="text-sm text-slate-500">Sort By:</span>
+                 <select 
+                   value={sortBy} 
+                   onChange={handleSortChange} 
+                   className="h-9 rounded-lg border border-slate-200 bg-white text-sm px-3 focus:ring-2 focus:ring-indigo-500 dark:bg-slate-900 dark:border-slate-800"
+                 >
+                   <option value="chance">Best Chance</option>
+                   <option value="cutoff_low">Cutoff (Low-High)</option>
+                   <option value="cutoff_high">Cutoff (High-Low)</option>
+                 </select>
+               </div>
+               <Button variant="outline" onClick={() => setStep(1)} size="sm">Modify</Button>
+               <Button onClick={exportCSV} variant="secondary" size="sm">
+                 <Download className="mr-2 h-4 w-4" /> Export
                </Button>
             </div>
           </div>
@@ -182,7 +265,7 @@ const PredictorPage = () => {
                 <p className="text-slate-500">Try adjusting your filters or category.</p>
               </div>
             ) : (
-              results.map((item, idx) => (
+              getSortedResults().map((item, idx) => (
                 <Card key={idx} className="flex flex-col md:flex-row justify-between items-start md:items-center p-6 hover:border-indigo-500/30 transition-colors">
                   <div className="flex-1">
                     <div className="flex items-center space-x-3 mb-2">
@@ -199,10 +282,15 @@ const PredictorPage = () => {
                     </div>
                     <h3 className="text-xl font-bold text-slate-900 dark:text-white">{item.college}</h3>
                     <p className="text-teal-600 font-medium">{item.branch}</p>
-                    <div className="flex items-center space-x-4 mt-3 text-sm text-slate-500">
+                    <div className="flex flex-wrap gap-x-6 gap-y-2 mt-3 text-sm text-slate-500">
                       <span>Exp. Cutoff: <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{item.prediction.expected_cutoff}</span></span>
                       <span>Volatility (σ): <span className="font-mono text-slate-700 dark:text-slate-300">{item.prediction.sigma}</span></span>
-
+                      {item.latest_cutoff && (
+                        <>
+                           <span className="hidden md:inline text-slate-300">|</span>
+                           <span>Last Year: <span className="font-mono text-slate-700 dark:text-slate-300">{item.latest_cutoff.closing_rank}</span> <span className="text-xs text-slate-400">(Round {item.latest_cutoff.round})</span></span>
+                        </>
+                      )}
                     </div>
                   </div>
                   

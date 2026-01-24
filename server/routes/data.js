@@ -8,15 +8,18 @@ const { verifyAdmin } = require('../middleware/authMiddleware');
 
 const upload = multer({ 
   dest: 'uploads/',
-  limits: { fileSize: 50 * 1024 * 1024 } // 50MB
+  limits: { fileSize: 100 * 1024 * 1024 } // 100MB
 });
 
 // Helper to Upsert College
-const getOrCreateCollege = async (name, state) => {
+const getOrCreateCollege = async (name, state, type) => {
   let res = await db.query('SELECT id FROM colleges WHERE name = $1 AND state = $2', [name, state]);
-  if (res.rows.length > 0) return res.rows[0].id;
+  if (res.rows.length > 0) {
+    await db.query('UPDATE colleges SET type = $1 WHERE id = $2', [type, res.rows[0].id]);
+    return res.rows[0].id;
+  }
   
-  res = await db.query('INSERT INTO colleges (name, state) VALUES ($1, $2) RETURNING id', [name, state]);
+  res = await db.query('INSERT INTO colleges (name, state, type) VALUES ($1, $2, $3) RETURNING id', [name, state, type]);
   return res.rows[0].id;
 };
 
@@ -35,19 +38,24 @@ router.post('/upload', verifyAdmin, upload.single('file'), async (req, res) => {
   }
 
   const { counselling_type_id } = req.body;
-  
+  const logFile = 'import_log.txt';
+  const log = (msg) => {
+      try {
+        fs.appendFileSync(logFile, msg + '\n');
+      } catch (e) { console.error('Log Error:', e); }
+  };
+
   if (!counselling_type_id) {
      return res.status(400).send({ message: 'Counselling Type ID is required' });
   }
 
-  // Create Import Record
   let importId;
   const client = await db.pool.connect();
 
   try {
     const importRes = await client.query(
       'INSERT INTO imports (filename, counselling_type_id, admin_id) VALUES ($1, $2, $3) RETURNING id',
-      [req.file.originalname, counselling_type_id, req.userId] // req.userId from verifyAdmin
+      [req.file.originalname, counselling_type_id, req.userId] 
     );
     importId = importRes.rows[0].id;
   } catch (err) {
@@ -55,127 +63,206 @@ router.post('/upload', verifyAdmin, upload.single('file'), async (req, res) => {
     return res.status(500).send({ message: 'Failed to initialize import', error: err.message });
   }
 
-  const results = [];
+  log(`\n--- New Import Started: ${new Date().toISOString()} ---`);
   
-  fs.createReadStream(req.file.path)
-    .pipe(csv({
-      headers: false, // User confirmed no headers
-      mapHeaders: ({ header }) => header.trim().replace(/^\ufeff/, '') 
-    }))
-    .on('data', (data) => results.push(data))
-    .on('end', async () => {
-      const logFile = 'import_log.txt';
-      const log = (msg) => fs.appendFileSync(logFile, msg + '\n');
+  try {
+    await client.query('BEGIN');
+    
+    let successCount = 0;
+    let errorCount = 0;
+    
+    // Caches
+    const collegeCache = new Map();
+    const branchCache = new Map();
+
+    const BATCH_SIZE = 500;
+    let batchCutoffs = [];
+
+    // Flush Batch Helper
+    const flushBatch = async () => {
+      if (batchCutoffs.length === 0) return;
+
+      // Deduplicate within batch to avoid "ON CONFLICT DO UPDATE command cannot affect row a second time"
+      const uniqueBatch = new Map();
       
-      log(`\n--- New Import Started: ${new Date().toISOString()} ---`);
+      for (const item of batchCutoffs) {
+          const key = `${item.college_id}-${item.branch_id}-${item.counselling_type_id}-${item.year}-${item.round}-${item.category}-${item.quota}-${item.gender}`;
+          uniqueBatch.set(key, item);
+      }
       
+      const itemsToInsert = Array.from(uniqueBatch.values());
+
+      const values = [];
+      const placeholders = [];
+      let paramIndex = 1;
+
+      for (const item of itemsToInsert) {
+        placeholders.push(`($${paramIndex}, $${paramIndex+1}, $${paramIndex+2}, $${paramIndex+3}, $${paramIndex+4}, $${paramIndex+5}, $${paramIndex+6}, $${paramIndex+7}, $${paramIndex+8}, $${paramIndex+9}, $${paramIndex+10})`);
+        values.push(
+           item.college_id, item.branch_id, item.counselling_type_id, 
+           item.year, item.round, item.category, item.quota, item.gender, 
+           item.opening_rank, item.closing_rank, item.import_id
+        );
+        paramIndex += 11;
+      }
+
+      const query = `
+        INSERT INTO cutoffs 
+        (college_id, branch_id, counselling_type_id, year, round, category, quota, gender, opening_rank, closing_rank, import_id)
+        VALUES ${placeholders.join(', ')}
+        ON CONFLICT (college_id, branch_id, counselling_type_id, year, round, category, quota, gender)
+        DO UPDATE SET 
+          opening_rank = EXCLUDED.opening_rank, 
+          closing_rank = EXCLUDED.closing_rank,
+          import_id = EXCLUDED.import_id
+      `;
+
+      await client.query(query, values);
+      batchCutoffs = [];
+    };
+
+    const stream = fs.createReadStream(req.file.path)
+      .pipe(csv({
+        headers: false, 
+        mapHeaders: ({ header }) => header.trim().replace(/^\ufeff/, '') 
+      }));
+    
+    let rowIndex = 0;
+
+    for await (const row of stream) {
+      // Use indexed access since headers: false defaults to 0, 1, 2...
+      // csv-parser emits object { '0': '...', '1': '...' }
+      const values = [];
+      let i = 0;
+      while (row[i] !== undefined) {
+          values.push(row[i]);
+          i++;
+      }
+
+      // First Row handling
+      if (rowIndex === 0) {
+         log(`First Row parsed: ${JSON.stringify(values)}`);
+         if (values.length > 0 && typeof values[0] === 'string') {
+             values[0] = values[0].replace(/^\ufeff/, '');
+         }
+      }
+      rowIndex++;
+
+      // Header check
+      if (values.some(v => typeof v === 'string' && v.toLowerCase().includes('college name'))) {
+         log('Skipping apparent header row.');
+         continue;
+      }
+
+      // Strict 11 columns
+      if (values.length < 11) {
+         if (errorCount < 10) log(`Skipping Row (Not enough columns - ${values.length}): ${JSON.stringify(values)}`);
+         errorCount++;
+         continue;
+      }
+
+      const collegeType = values[0]; 
+      const collegeName = values[1];
+      const branchCode = values[2];
+      const branchName = values[3];
+      const rawYear = values[4];
+      const rawRound = values[5];
+      const category = values[6];
+      const quota = values[7];
+      const gender = values[8];
+      const rawOpen = values[9];
+      const rawClose = values[10];
+      
+      const location = 'Unknown'; 
+
+      const parseRank = (val) => {
+        if (!val) return 0;
+        if (typeof val === 'string') return parseInt(val.replace(/,/g, ''));
+        return parseInt(val);
+      };
+
+      const year = parseInt(rawYear);
+      const round = parseInt(rawRound) || 1;
+      const openingRank = parseRank(rawOpen);
+      const closingRank = parseRank(rawClose);
+
+      if (!collegeName || !branchName || isNaN(year) || isNaN(closingRank)) {
+         if (errorCount < 10) log(`Skipping Invalid Row: ${JSON.stringify(values)}`);
+         errorCount++;
+         continue;
+      }
+
       try {
-        await client.query('BEGIN');
-        
-        let successCount = 0;
-        let errorCount = 0;
-
-        for (const row of results) {
-          // Since headers: false, row is an object with keys '0', '1', '2'...
-          const values = Object.values(row);
-          
-          // Debug first row
-          if (successCount === 0 && errorCount === 0) {
-             log(`First Row detected: ${JSON.stringify(values)}`);
-          }
-
-          // Check if this looks like a header row (e.g. contains "College" or "Year")
-          // If so, skip it.
-          if (values.some(v => typeof v === 'string' && v.toLowerCase().includes('college name'))) {
-             log('Skipping apparent header row.');
-             continue;
-          }
-
-          // Expected Format (10 columns based on user sample):
-          // 0: College, 1: BranchCode, 2: BranchName, 3: Year, 4: Round, 5: Category, 6: Quota, 7: Gender, 8: Open, 9: Close
-          
-          if (values.length < 10) {
-             log(`Skipping Row: Not enough columns (${values.length}). Row: ${JSON.stringify(values)}`);
-             errorCount++;
-             continue;
-          }
-
-          const collegeName = values[0];
-          const branchCode = values[1];
-          const branchName = values[2];
-          const rawYear = values[3];
-          const rawRound = values[4];
-          const category = values[5];
-          const quota = values[6];
-          const gender = values[7];
-          const rawOpen = values[8];
-          const rawClose = values[9];
-          
-          // Location is missing in user data -> Default to Unknown or extract?
-          const location = 'Unknown'; 
-
-          // Sanitize Ranks (Remove commas)
-          const parseRank = (val) => {
-            if (!val) return 0;
-            if (typeof val === 'string') return parseInt(val.replace(/,/g, ''));
-            return parseInt(val);
-          };
-
-          const year = parseInt(rawYear);
-          const round = parseInt(rawRound) || 1;
-          const openingRank = parseRank(rawOpen);
-          const closingRank = parseRank(rawClose);
-
-          if (!collegeName || !branchName || isNaN(year) || isNaN(closingRank)) {
-             log(`Skipping Invalid Row: ${JSON.stringify(values)}`);
-             errorCount++;
-             continue;
-          }
-
-          const collegeId = await getOrCreateCollege(collegeName, location);
-          const branchId = await getOrCreateBranch(branchName, branchCode);
-
-          // Insert with Import ID
-          const query = `
-            INSERT INTO cutoffs 
-            (college_id, branch_id, counselling_type_id, year, round, category, quota, gender, opening_rank, closing_rank, import_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            ON CONFLICT (college_id, branch_id, counselling_type_id, year, round, category, quota, gender)
-            DO UPDATE SET 
-              opening_rank = EXCLUDED.opening_rank, 
-              closing_rank = EXCLUDED.closing_rank,
-              import_id = EXCLUDED.import_id
-          `;
-
-          await client.query(query, [
-            collegeId, branchId, counselling_type_id, year, round, category, quota, gender, openingRank, closingRank, importId
-          ]);
-          
-          successCount++;
+        // Resolve IDs
+        let collegeId;
+        const colKey = `${collegeName}|${location}`;
+        if (collegeCache.has(colKey)) {
+           collegeId = collegeCache.get(colKey);
+        } else {
+           collegeId = await getOrCreateCollege(collegeName, location, collegeType);
+           collegeCache.set(colKey, collegeId);
         }
 
-        // Update Import Stats
-        await client.query('UPDATE imports SET record_count = $1 WHERE id = $2', [successCount, importId]);
+        let branchId;
+        const brKey = `${branchCode}`; 
+        if (branchCache.has(brKey)) {
+           branchId = branchCache.get(brKey);
+        } else {
+           branchId = await getOrCreateBranch(branchName, branchCode);
+           branchCache.set(brKey, branchId);
+        }
 
-        await client.query('COMMIT');
-        fs.unlinkSync(req.file.path);
-        
-        log(`Import Finished: ${successCount} success, ${errorCount} failed`);
-
-        res.status(200).send({ 
-          message: 'Data processing complete', 
-          stats: { success: successCount, failed: errorCount } 
+        batchCutoffs.push({
+            college_id: collegeId,
+            branch_id: branchId,
+            counselling_type_id,
+            year,
+            round,
+            category,
+            quota,
+            gender,
+            opening_rank: openingRank,
+            closing_rank: closingRank,
+            import_id: importId
         });
+        
+        successCount++;
 
-      } catch (err) {
-        log(`Import Error: ${err.message}`);
-        await client.query('ROLLBACK');
-        console.error('Import Error:', err);
-        res.status(500).send({ message: 'Error processing CSV data', error: err.message });
-      } finally {
-        client.release();
+        if (batchCutoffs.length >= BATCH_SIZE) {
+            await flushBatch();
+        }
+
+      } catch (rowErr) {
+         log(`Error processing row ${rowIndex}: ${rowErr.message}`);
+         errorCount++;
       }
+    }
+
+    // Flush remaining
+    await flushBatch();
+
+    await client.query('UPDATE imports SET record_count = $1 WHERE id = $2', [successCount, importId]);
+
+    await client.query('COMMIT');
+    
+    // Sync unlink
+    try { fs.unlinkSync(req.file.path); } catch(e) {}
+    
+    log(`Import Finished: ${successCount} success, ${errorCount} failed`);
+
+    res.status(200).send({ 
+      message: 'Data processing complete', 
+      stats: { success: successCount, failed: errorCount } 
     });
+
+  } catch (err) {
+    log(`Import Critical Error: ${err.message}`);
+    await client.query('ROLLBACK');
+    console.error('Import Error:', err);
+    res.status(500).send({ message: 'Error processing CSV data', error: err.message });
+  } finally {
+    client.release();
+  }
 });
 
 // GET Import History

@@ -66,7 +66,7 @@ const predictCutoff = (history) => {
   const lastCR = closingRanks[closingRanks.length - 1];
   const expectedCR = lastCR + weightedTrend;
 
-  // Volatility (Sigma) - Standard Calculation
+  // Volatility (Sigma) - Standard Calculation (Volitality Increases - More Deviation in Closing Ranks)
   const sigma = calculateSigma(closingRanks);
 
   return { expected: Math.round(expectedCR), sigma, trend: weightedTrend };

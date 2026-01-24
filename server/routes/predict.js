@@ -17,10 +17,12 @@ router.post('/', async (req, res) => {
       SELECT 
         c.name as college_name, 
         c.state,
+        c.type as college_type,
         b.name as branch_name, 
         b.code as branch_code,
         cty.name as counselling_name,
         ct.year,
+        ct.round,
         ct.closing_rank
       FROM cutoffs ct
       JOIN colleges c ON ct.college_id = c.id
@@ -32,11 +34,24 @@ router.post('/', async (req, res) => {
     `;
 
     const params = [category, quota, gender];
+    let paramIndex = 4;
 
     // If specific counselling selected (and not 'Multi-Counselling' or empty), filter by it
     if (counselling_type && counselling_type !== 'Multi-Counselling' && counselling_type !== 'Multi') {
-      query += ` AND cty.name = $4`;
+      query += ` AND cty.name = $${paramIndex}`;
       params.push(counselling_type);
+      paramIndex++;
+    }
+
+    // Filter by Exam Type (User Request)
+    // "Sort iits only for jee advance and other NITs and GFTIs for JEE mains."
+    const { exam_type } = req.body;
+    if (exam_type) {
+      if (exam_type === 'JEE Advanced') {
+        query += ` AND c.type = 'IIT'`; 
+      } else if (exam_type === 'JEE Main') {
+        query += ` AND c.type IN ('NIT', 'IIIT', 'GFTI')`;
+      }
     }
 
     query += ` ORDER BY ct.college_id, ct.branch_id, ct.year ASC`;
@@ -51,13 +66,18 @@ router.post('/', async (req, res) => {
         grouped[key] = {
           college: row.college_name,
           state: row.state,
+          college_type: row.college_type, // Create field in response
           branch: row.branch_name,
           branch_code: row.branch_code,
           counselling: row.counselling_name,
           history: []
         };
       }
-      grouped[key].history.push({ year: row.year, closing_rank: row.closing_rank });
+      grouped[key].history.push({ 
+        year: row.year, 
+        round: row.round,
+        closing_rank: row.closing_rank 
+      });
     });
 
     // 2. Process Prediction for each
@@ -72,13 +92,23 @@ router.post('/', async (req, res) => {
       // User requirements didn't specify strict filtering, but "Sort by chance".
       // We'll return everything and let frontend filter/sort.
       
+      // Get Latest Data for Display
+      const sortedHistory = [...item.history].sort((a,b) => a.year - b.year);
+      const latest = sortedHistory[sortedHistory.length - 1];
+
       predictions.push({
         college: item.college,
         state: item.state,
+        college_type: item.college_type, // Create field in response
         branch: item.branch,
         branch_code: item.branch_code,
         counselling_type: item.counselling,
         history: item.history,
+        latest_cutoff: {
+          year: latest.year,
+          round: latest.round,
+          closing_rank: latest.closing_rank
+        },
         prediction: {
           expected_cutoff: expected,
           sigma: Math.round(sigma * 100) / 100,
