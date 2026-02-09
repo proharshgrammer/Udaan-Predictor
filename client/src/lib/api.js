@@ -69,5 +69,17 @@ export const api = {
     const data = await res.json();
     if (!res.ok) throw new Error(data.message);
     return data;
+  },
+
+  getMetadata: async (counsellingType) => {
+    const params = new URLSearchParams();
+    if (counsellingType) params.append('counselling_type', counsellingType);
+    
+    const res = await fetch(`${API_URL}/predict/metadata?${params.toString()}`, {
+      method: 'GET'
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message);
+    return data;
   }
 };

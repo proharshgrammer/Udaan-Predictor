@@ -25,7 +25,13 @@ const predictCutoff = (history) => {
   if (closingRanks.length < 2) {
     // Not enough data, just return last year's data
     const last = closingRanks[closingRanks.length - 1];
-    return { expected: last, sigma: 0, trend: 0 };
+    return { 
+      expected: last, 
+      sigma: 0, 
+      volatility: 'Low', 
+      volatilityScore: 0, 
+      trend: 0 
+    };
   }
 
   // Calculate Deltas (Year-over-Year changes)
@@ -64,12 +70,37 @@ const predictCutoff = (history) => {
 
   // CR_expected = CR_last + Weighted Trend
   const lastCR = closingRanks[closingRanks.length - 1];
-  const expectedCR = lastCR + weightedTrend;
+  let expectedCR = lastCR + weightedTrend;
 
-  // Volatility (Sigma) - Standard Calculation (Volitality Increases - More Deviation in Closing Ranks)
+  // 1. Safety Floor: Cutoff cannot be less than 1
+  expectedCR = Math.max(1, expectedCR);
+
+  // 2. Drop Guardrail: Prevent unrealistic drops (e.g. > 80% drop in one year)
+  // Even if trend says -500k, we shouldn't drop from 100k to 1.
+  // Let's cap the min expected rank at 20% of last year's rank.
+  if (lastCR > 100) {
+      expectedCR = Math.max(expectedCR, lastCR * 0.2);
+  }
+
+  // Volatility (Sigma) - Standard Deviation
   const sigma = calculateSigma(closingRanks);
+  
+  // Volatility Label (Coefficient of Variation)
+  // CV = Sigma / Mean. Higher CV = More Volatile relative to rank size.
+  const mean = closingRanks.reduce((a, b) => a + b, 0) / closingRanks.length;
+  const cv = mean === 0 ? 0 : sigma / mean;
+  
+  let volatilityLabel = 'Low';
+  if (cv > 0.4) volatilityLabel = 'High';
+  else if (cv > 0.2) volatilityLabel = 'Medium';
 
-  return { expected: Math.round(expectedCR), sigma, trend: weightedTrend };
+  return { 
+    expected: Math.round(expectedCR), 
+    sigma: Math.round(sigma), 
+    volatility: volatilityLabel,
+    volatilityScore: parseFloat(cv.toFixed(2)),
+    trend: weightedTrend 
+  };
 };
 
 /**

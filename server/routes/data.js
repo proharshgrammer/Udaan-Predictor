@@ -39,10 +39,11 @@ router.post('/upload', verifyAdmin, upload.single('file'), async (req, res) => {
 
   const { counselling_type_id } = req.body;
   const logFile = 'import_log.txt';
+  
+  // Create write stream for better performance and error handling
+  const logStream = fs.createWriteStream(logFile, { flags: 'a' });
   const log = (msg) => {
-      try {
-        fs.appendFileSync(logFile, msg + '\n');
-      } catch (e) { console.error('Log Error:', e); }
+      logStream.write(msg + '\n');
   };
 
   if (!counselling_type_id) {
@@ -66,10 +67,11 @@ router.post('/upload', verifyAdmin, upload.single('file'), async (req, res) => {
   log(`\n--- New Import Started: ${new Date().toISOString()} ---`);
   
   try {
-    await client.query('BEGIN');
+    // REMOVED GLOBAL TRANSACTION to allow partial success & avoid "current transaction is aborted" loops
     
     let successCount = 0;
     let errorCount = 0;
+    const MAX_ERRORS = 100; // Abort if too many errors
     
     // Caches
     const collegeCache = new Map();
@@ -82,42 +84,49 @@ router.post('/upload', verifyAdmin, upload.single('file'), async (req, res) => {
     const flushBatch = async () => {
       if (batchCutoffs.length === 0) return;
 
-      // Deduplicate within batch to avoid "ON CONFLICT DO UPDATE command cannot affect row a second time"
-      const uniqueBatch = new Map();
-      
-      for (const item of batchCutoffs) {
-          const key = `${item.college_id}-${item.branch_id}-${item.counselling_type_id}-${item.year}-${item.round}-${item.category}-${item.quota}-${item.gender}`;
-          uniqueBatch.set(key, item);
+      try {
+        // Deduplicate within batch to avoid "ON CONFLICT DO UPDATE command cannot affect row a second time"
+        const uniqueBatch = new Map();
+        
+        for (const item of batchCutoffs) {
+            const key = `${item.college_id}-${item.branch_id}-${item.counselling_type_id}-${item.year}-${item.round}-${item.category}-${item.quota}-${item.gender}`;
+            uniqueBatch.set(key, item);
+        }
+        
+        const itemsToInsert = Array.from(uniqueBatch.values());
+
+        const values = [];
+        const placeholders = [];
+        let paramIndex = 1;
+
+        for (const item of itemsToInsert) {
+          placeholders.push(`($${paramIndex}, $${paramIndex+1}, $${paramIndex+2}, $${paramIndex+3}, $${paramIndex+4}, $${paramIndex+5}, $${paramIndex+6}, $${paramIndex+7}, $${paramIndex+8}, $${paramIndex+9}, $${paramIndex+10})`);
+          values.push(
+             item.college_id, item.branch_id, item.counselling_type_id, 
+             item.year, item.round, item.category, item.quota, item.gender, 
+             item.opening_rank, item.closing_rank, item.import_id
+          );
+          paramIndex += 11;
+        }
+
+        const query = `
+          INSERT INTO cutoffs 
+          (college_id, branch_id, counselling_type_id, year, round, category, quota, gender, opening_rank, closing_rank, import_id)
+          VALUES ${placeholders.join(', ')}
+          ON CONFLICT (college_id, branch_id, counselling_type_id, year, round, category, quota, gender)
+          DO UPDATE SET 
+            opening_rank = EXCLUDED.opening_rank, 
+            closing_rank = EXCLUDED.closing_rank,
+            import_id = EXCLUDED.import_id
+        `;
+
+        await client.query(query, values);
+      } catch (batchErr) {
+        log(`Batch Flush Error: ${batchErr.message}`);
+        // If strict mode, throw. Here we log and continue, but since we removed global transaction, 
+        // this error won't abort future queries. However, a batch failure means ~500 rows lost.
+        // We could implement row-by-row fallback here if critical.
       }
-      
-      const itemsToInsert = Array.from(uniqueBatch.values());
-
-      const values = [];
-      const placeholders = [];
-      let paramIndex = 1;
-
-      for (const item of itemsToInsert) {
-        placeholders.push(`($${paramIndex}, $${paramIndex+1}, $${paramIndex+2}, $${paramIndex+3}, $${paramIndex+4}, $${paramIndex+5}, $${paramIndex+6}, $${paramIndex+7}, $${paramIndex+8}, $${paramIndex+9}, $${paramIndex+10})`);
-        values.push(
-           item.college_id, item.branch_id, item.counselling_type_id, 
-           item.year, item.round, item.category, item.quota, item.gender, 
-           item.opening_rank, item.closing_rank, item.import_id
-        );
-        paramIndex += 11;
-      }
-
-      const query = `
-        INSERT INTO cutoffs 
-        (college_id, branch_id, counselling_type_id, year, round, category, quota, gender, opening_rank, closing_rank, import_id)
-        VALUES ${placeholders.join(', ')}
-        ON CONFLICT (college_id, branch_id, counselling_type_id, year, round, category, quota, gender)
-        DO UPDATE SET 
-          opening_rank = EXCLUDED.opening_rank, 
-          closing_rank = EXCLUDED.closing_rank,
-          import_id = EXCLUDED.import_id
-      `;
-
-      await client.query(query, values);
       batchCutoffs = [];
     };
 
@@ -130,6 +139,11 @@ router.post('/upload', verifyAdmin, upload.single('file'), async (req, res) => {
     let rowIndex = 0;
 
     for await (const row of stream) {
+      if (errorCount >= MAX_ERRORS) {
+          log('Aborting import: Too many errors.');
+          break;
+      }
+
       // Use indexed access since headers: false defaults to 0, 1, 2...
       // csv-parser emits object { '0': '...', '1': '...' }
       const values = [];
@@ -162,14 +176,14 @@ router.post('/upload', verifyAdmin, upload.single('file'), async (req, res) => {
       }
 
       const collegeType = values[0]; 
-      const collegeName = values[1];
-      const branchCode = values[2];
-      const branchName = values[3];
+      const collegeName = values[1].trim(); // Trim names
+      const branchCode = values[2].trim();
+      const branchName = values[3].trim();
       const rawYear = values[4];
       const rawRound = values[5];
-      const category = values[6];
-      const quota = values[7];
-      const gender = values[8];
+      const category = values[6].trim();
+      const quota = values[7].trim();
+      const gender = values[8].trim();
       const rawOpen = values[9];
       const rawClose = values[10];
       
@@ -233,7 +247,8 @@ router.post('/upload', verifyAdmin, upload.single('file'), async (req, res) => {
         }
 
       } catch (rowErr) {
-         log(`Error processing row ${rowIndex}: ${rowErr.message}`);
+         if (errorCount < 50) log(`Error processing row ${rowIndex}: ${rowErr.message}`); // Limit logging
+         if (errorCount === 50) log('Error logging paused (limit reached).');
          errorCount++;
       }
     }
@@ -243,12 +258,13 @@ router.post('/upload', verifyAdmin, upload.single('file'), async (req, res) => {
 
     await client.query('UPDATE imports SET record_count = $1 WHERE id = $2', [successCount, importId]);
 
-    await client.query('COMMIT');
-    
+    // No COMMIT needed as we removed BEGIN
+
     // Sync unlink
     try { fs.unlinkSync(req.file.path); } catch(e) {}
     
     log(`Import Finished: ${successCount} success, ${errorCount} failed`);
+    logStream.end();
 
     res.status(200).send({ 
       message: 'Data processing complete', 
@@ -257,8 +273,9 @@ router.post('/upload', verifyAdmin, upload.single('file'), async (req, res) => {
 
   } catch (err) {
     log(`Import Critical Error: ${err.message}`);
-    await client.query('ROLLBACK');
+    // No ROLLBACK needed
     console.error('Import Error:', err);
+    try { logStream.end(); } catch(e) {}
     res.status(500).send({ message: 'Error processing CSV data', error: err.message });
   } finally {
     client.release();

@@ -4,7 +4,7 @@ import { api } from '../lib/api';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
-import { Loader2, Download, AlertTriangle, CheckCircle, Info, ChevronLeft } from 'lucide-react';
+import { Loader2, Download, AlertTriangle, CheckCircle, Info, ChevronLeft, RefreshCw } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
@@ -24,13 +24,44 @@ const PredictorPage = () => {
     exam_type: 'JEE Main' // Default
   });
   const [results, setResults] = useState([]);
+  
+  // Metadata State
+  const [metadata, setMetadata] = useState({
+    categories: ['OPEN', 'OBC-NCL', 'SC', 'ST', 'GEN-EWS'],
+    quotas: ['AI', 'HS', 'OS'],
+    genders: ['Gender-Neutral', 'Female-Only']
+  });
+  const [metadataLoading, setMetadataLoading] = useState(false);
+
+
+  const fetchMetadata = async () => {
+    setMetadataLoading(true);
+    try {
+      // If Multi, we fetch union (backend handles it)
+      const data = await api.getMetadata(counselingType);
+      setMetadata(data);
+      
+      // Optional: Reset form fields if they are not invalid? 
+      // For now, let's keep user selection to avoid annoyance, 
+      // unless we want to strict reset. 
+    } catch (err) {
+      console.log('Failed to fetch metadata, using defaults');
+    } finally {
+      setMetadataLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMetadata();
+  }, [counselingType]);
+
 
   useEffect(() => {
     setFormData(prev => ({ 
       ...prev, 
       counselling_type: counselingType,
       // Default to JEE Advanced if JoSAA (Actually JoSAA can be both, but user wants toggle. Let's default Main)
-      exam_type: counselingType === 'JoSAA' ? 'JEE Advanced' : 'JEE Main' 
+      exam_type: counselingType === 'JoSAA' ? 'JEE Main' : '' 
     }));
   }, [counselingType]);
 
@@ -175,6 +206,22 @@ const PredictorPage = () => {
                 />
               </div>
 
+
+
+              {/* Dynamic Metadata Section */}
+              <div className="flex justify-between items-center -mb-2">
+                 <h3 className="text-sm font-medium text-slate-500">Filter Options</h3>
+                 <button 
+                   type="button" 
+                   onClick={fetchMetadata} 
+                   className="text-xs flex items-center text-indigo-600 hover:text-indigo-700 transition-colors"
+                   disabled={metadataLoading}
+                 >
+                   <RefreshCw className={cn("h-3 w-3 mr-1", metadataLoading && "animate-spin")} />
+                   Refresh Options
+                 </button>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-2 text-slate-700 dark:text-slate-300">Category</label>
@@ -183,12 +230,11 @@ const PredictorPage = () => {
                     className="w-full h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 dark:bg-slate-900 dark:border-slate-800"
                     value={formData.category}
                     onChange={handleChange}
+                    disabled={metadataLoading}
                   >
-                    <option value="OPEN">OPEN</option>
-                    <option value="OBC-NCL">OBC-NCL</option>
-                    <option value="SC">SC</option>
-                    <option value="ST">ST</option>
-                    <option value="GEN-EWS">EWS</option>
+                    {metadata.categories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -198,10 +244,11 @@ const PredictorPage = () => {
                     className="w-full h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 dark:bg-slate-900 dark:border-slate-800"
                     value={formData.quota}
                     onChange={handleChange}
+                    disabled={metadataLoading}
                   >
-                    <option value="AI">All India (AI)</option>
-                    <option value="HS">Home State (HS)</option>
-                    <option value="OS">Other State (OS)</option>
+                    {metadata.quotas.map(q => (
+                      <option key={q} value={q}>{q}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -213,9 +260,11 @@ const PredictorPage = () => {
                   className="w-full h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 dark:bg-slate-900 dark:border-slate-800"
                   value={formData.gender}
                   onChange={handleChange}
+                  disabled={metadataLoading}
                 >
-                  <option value="Gender-Neutral">Gender-Neutral</option>
-                  <option value="Female-Only">Female-Only</option>
+                  {metadata.genders.map(g => (
+                    <option key={g} value={g}>{g}</option>
+                  ))}
                 </select>
               </div>
 
@@ -284,7 +333,15 @@ const PredictorPage = () => {
                     <p className="text-teal-600 font-medium">{item.branch}</p>
                     <div className="flex flex-wrap gap-x-6 gap-y-2 mt-3 text-sm text-slate-500">
                       <span>Exp. Cutoff: <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{item.prediction.expected_cutoff}</span></span>
-                      <span>Volatility (σ): <span className="font-mono text-slate-700 dark:text-slate-300">{item.prediction.sigma}</span></span>
+                      <span>Volatility: 
+                        <span className={cn(
+                          "font-bold ml-1",
+                          item.prediction.volatility === 'High' ? 'text-red-500' :
+                          item.prediction.volatility === 'Medium' ? 'text-yellow-600' : 'text-teal-600'
+                        )}>
+                          {item.prediction.volatility}
+                        </span>
+                      </span>
                       {item.latest_cutoff && (
                         <>
                            <span className="hidden md:inline text-slate-300">|</span>

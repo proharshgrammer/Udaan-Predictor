@@ -47,9 +47,9 @@ CREATE TABLE IF NOT EXISTS cutoffs (
     counselling_type_id INTEGER REFERENCES counselling_types(id) ON DELETE CASCADE,
     year INTEGER NOT NULL,
     round INTEGER NOT NULL,
-    category VARCHAR(50) NOT NULL, -- 'OPEN', 'OBC-NCL', etc.
-    quota VARCHAR(20) NOT NULL, -- 'AI', 'HS', 'OS'
-    gender VARCHAR(20) NOT NULL, -- 'Gender-Neutral', 'Female-Only'
+    category VARCHAR(255) NOT NULL, -- 'OPEN', 'OBC-NCL', etc.
+    quota VARCHAR(255) NOT NULL, -- 'AI', 'HS', 'OS'
+    gender VARCHAR(255) NOT NULL, -- 'Gender-Neutral', 'Female-Only'
     opening_rank INTEGER NOT NULL,
     closing_rank INTEGER NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

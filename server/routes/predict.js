@@ -13,6 +13,16 @@ router.post('/', async (req, res) => {
 
     // 1. Build Query
     // Join counselling_types to get the name
+    // Normalize Gender (Handle "Gender-Neutral" vs "Gender Neutral")
+    // Database has mixed or specific formats, so we should be flexible or ensure match.
+    // For now, let's try to match exactly what's passed, but also handle common variations if no result?
+    // Actually, user fixed DB to "Gender-Neutral", so it should match.
+    // But let's log the queryparams for debugging if it fails.
+    
+    // Normalization logic:
+    // If DB expects "Gender Neutral" but we get "Gender-Neutral", replace.
+    // However, current DB state has "Gender-Neutral", so strict match is fine.
+    
     let query = `
       SELECT 
         c.name as college_name, 
@@ -38,7 +48,7 @@ router.post('/', async (req, res) => {
 
     // If specific counselling selected (and not 'Multi-Counselling' or empty), filter by it
     if (counselling_type && counselling_type !== 'Multi-Counselling' && counselling_type !== 'Multi') {
-      query += ` AND cty.name = $${paramIndex}`;
+      query += ` AND LOWER(cty.name) = LOWER($${paramIndex})`;
       params.push(counselling_type);
       paramIndex++;
     }
@@ -126,6 +136,54 @@ router.post('/', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).send({ message: 'Prediction error', error: err.message });
+  }
+});
+
+// GET /metadata - Fetch dynamic options
+router.get('/metadata', async (req, res) => {
+  try {
+    const { counselling_type } = req.query;
+    
+    // Base query: Get all distinct combinations
+    let query = `
+      SELECT DISTINCT ct.category, ct.quota, ct.gender 
+      FROM cutoffs ct
+      JOIN counselling_types cty ON ct.counselling_type_id = cty.id
+    `;
+    
+    const params = [];
+
+    // If specific counselling selected (and not Multi), filter by it
+    if (counselling_type && counselling_type !== 'Multi' && counselling_type !== 'Multi-Counselling') {
+       query += ` WHERE LOWER(cty.name) = LOWER($1)`;
+       params.push(counselling_type);
+    }
+
+    const result = await db.query(query, params);
+
+    // Extract unique values for each field
+    const categories = new Set();
+    const quotas = new Set();
+    const genders = new Set();
+
+    result.rows.forEach(row => {
+      if (row.category) categories.add(row.category);
+      if (row.quota) quotas.add(row.quota);
+      if (row.gender) genders.add(row.gender);
+    });
+
+    // Default fallbacks if empty (to avoid broken UI)
+    const response = {
+      categories: categories.size > 0 ? Array.from(categories).sort() : ['OPEN', 'OBC-NCL', 'SC', 'ST', 'GEN-EWS'],
+      quotas: quotas.size > 0 ? Array.from(quotas).sort() : ['AI', 'HS', 'OS'],
+      genders: genders.size > 0 ? Array.from(genders).sort() : ['Gender-Neutral', 'Female-Only']
+    };
+
+    res.json(response);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ message: 'Metadata fetch error', error: err.message });
   }
 });
 
