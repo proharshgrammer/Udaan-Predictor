@@ -15,9 +15,14 @@ router.post('/', async (req, res) => {
     // Cache Key
     const cacheKey = `predict:${JSON.stringify(req.body)}`;
     if (redis) {
-      const cachedData = await redis.get(cacheKey);
-      if (cachedData) {
-        return res.json(JSON.parse(cachedData));
+      try {
+        const cachedData = await redis.get(cacheKey);
+        if (cachedData) {
+          return res.json(JSON.parse(cachedData));
+        }
+      } catch (cacheErr) {
+        console.error('Redis Get Error:', cacheErr);
+        // Continue to DB query
       }
     }
 
@@ -144,7 +149,11 @@ router.post('/', async (req, res) => {
     res.json(predictions);
 
     if (redis) {
+      try {
         await redis.set(cacheKey, JSON.stringify(predictions), 'EX', 3600); // Cache for 1 hour
+      } catch (cacheSetErr) {
+        console.error('Redis Set Error:', cacheSetErr);
+      }
     }
 
   } catch (err) {
