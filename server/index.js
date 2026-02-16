@@ -6,8 +6,24 @@ const db = require('./db');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+
 // Middleware
-app.use(cors());
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173', // Vite local
+  'http://localhost:3000', // React local
+  process.env.FRONTEND_URL // Production Vercel URL
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -15,6 +31,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/data', require('./routes/data'));
 app.use('/api/predict', require('./routes/predict'));
+app.use('/api/cron', require('./routes/cron'));
 
 // Basic Route
 app.get('/', (req, res) => {

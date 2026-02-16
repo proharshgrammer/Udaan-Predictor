@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { predictCutoff, calculateChance } = require('../services/predictor');
+const redis = require('../config/redis');
 
 router.post('/', async (req, res) => {
   try {
@@ -9,6 +10,15 @@ router.post('/', async (req, res) => {
 
     if (!rank || !category || !quota || !gender) {
       return res.status(400).send({ message: 'Missing required fields: rank, category, quota, gender' });
+    }
+
+    // Cache Key
+    const cacheKey = `predict:${JSON.stringify(req.body)}`;
+    if (redis) {
+      const cachedData = await redis.get(cacheKey);
+      if (cachedData) {
+        return res.json(JSON.parse(cachedData));
+      }
     }
 
     // 1. Build Query
@@ -132,6 +142,10 @@ router.post('/', async (req, res) => {
     predictions.sort((a, b) => b.prediction.probability - a.prediction.probability);
 
     res.json(predictions);
+
+    if (redis) {
+        await redis.set(cacheKey, JSON.stringify(predictions), 'EX', 3600); // Cache for 1 hour
+    }
 
   } catch (err) {
     console.error(err);
